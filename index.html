@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Study Buddy — Smart Learning Assistant</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Lucide Icons for aesthetic icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        :root {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom scrollbar for left panel and main content */
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #a8a8a8; border-radius: 2px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background-color: #f1f1f1; }
+
+        /* Custom style for the circular progress bar */
+        .timer-ring {
+            stroke-dasharray: 440; /* 2 * PI * R where R is 70, so about 440 */
+            transition: stroke-dashoffset 0.5s linear, stroke 0.3s ease-in-out; /* Added stroke transition */
+            transform-origin: center;
+            transform: rotate(-90deg);
+        }
+        /* Ensure notes editor content is visible and editable */
+        .notes-editor {
+            min-height: 256px; /* 64 * 4 */
+            text-align: initial;
+        }
+        .notes-editor:empty:before {
+            content: attr(placeholder);
+            color: #9ca3af; /* gray-400 */
+            pointer-events: none;
+        }
+
+        /* Animation for the floating action button (to make it pop) */
+        @keyframes pulse-shadow {
+            0% { box-shadow: 0 10px 15px -3px rgba(236, 72, 153, 0.5), 0 4px 6px -2px rgba(236, 72, 153, 0.05); } /* pink-500 shadow */
+            50% { box-shadow: 0 12px 20px -5px rgba(236, 72, 153, 0.8), 0 4px 10px -4px rgba(236, 72, 153, 0.1); }
+            100% { box-shadow: 0 10px 15px -3px rgba(236, 72, 153, 0.5), 0 4px 6px -2px rgba(236, 72, 153, 0.05); }
+        }
+        #techniques-btn {
+            animation: pulse-shadow 3s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen flex antialiased">
+
+    <!-- Main Application Container -->
+    <div id="app" class="flex flex-col lg:flex-row w-full h-screen overflow-hidden">
+        
+        <!-- 1. Left Panel: Study Centres (Hub) -->
+        <aside id="study-centres-panel" class="w-full lg:w-72 bg-white border-r shadow-xl flex-shrink-0 flex flex-col custom-scrollbar overflow-y-auto" style="max-height: 100vh;">
+            <div class="p-4 border-b">
+                <h1 class="text-2xl font-extrabold text-indigo-700">Study Buddy</h1>
+                <p id="user-id-display" class="text-xs text-gray-500 mt-1 truncate">User ID: Loading...</p>
+            </div>
+            <div id="centre-list" class="flex-grow p-2 space-y-2 custom-scrollbar overflow-y-auto">
+                <!-- Study Centres will be injected here -->
+            </div>
+            <div class="p-4 border-t">
+                <button onclick="newStudyCentre()" class="w-full flex items-center justify-center py-2 px-4 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition duration-150 shadow-lg hover:shadow-xl">
+                    <i data-lucide="plus" class="w-5 h-5 mr-2"></i> New Study Centre
+                </button>
+            </div>
+        </aside>
+
+        <!-- 2. Right Content Area: Active Centre Details -->
+        <main id="centre-details" class="flex-grow flex flex-col p-4 md:p-8 custom-scrollbar overflow-y-auto" style="max-height: 100vh;">
+            
+            <div id="no-centre-selected" class="h-full flex flex-col items-center justify-center text-center text-gray-500">
+                <i data-lucide="brain-circuit" class="w-16 h-16 mb-4 text-indigo-400"></i>
+                <h2 class="text-2xl font-semibold">Welcome to Study Buddy!</h2>
+                <p class="mt-2">Select a Study Centre on the left, or create a new one to begin your focused session.</p>
+                <button onclick="showOnboarding(true)" class="mt-6 text-indigo-600 hover:text-indigo-800 font-medium flex items-center">
+                    <i data-lucide="lightbulb" class="w-4 h-4 mr-1"></i> Learn Memory Techniques
+                </button>
+            </div>
+
+            <div id="active-centre-view" class="hidden">
+                <div class="flex justify-between items-center mb-6 border-b pb-4">
+                    <!-- Title input field for the main view -->
+                    <input type="text" id="centre-title" class="text-3xl font-bold text-gray-800 bg-transparent border-none p-0 focus:ring-0 w-3/4" placeholder="Untitled Study Centre">
+                    <div class="flex space-x-2">
+                        <button onclick="exportCentre()" class="p-2 bg-gray-200 text-gray-700 rounded-full hover:bg-gray-300 transition" title="Export/Share">
+                            <i data-lucide="share-2" class="w-5 h-5"></i>
+                        </button>
+                        <button onclick="deleteCentreConfirmation()" class="p-2 bg-red-100 text-red-600 rounded-full hover:bg-red-200 transition" title="Delete Centre">
+                            <i data-lucide="trash-2" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                    <!-- Column 1: Pomodoro Timer -->
+                    <div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-xl border border-gray-100">
+                        <h3 class="text-xl font-semibold mb-4 flex items-center text-indigo-600">
+                            <i data-lucide="timer" class="w-5 h-5 mr-2"></i> Adaptive Pomodoro
+                        </h3>
+
+                        <div class="flex justify-center mb-6">
+                            <svg class="w-56 h-56" viewBox="0 0 150 150">
+                                <circle class="text-gray-200" stroke-width="6" stroke="currentColor" fill="transparent" r="70" cx="75" cy="75" />
+                                <circle id="timer-progress" class="timer-ring text-indigo-500" stroke-width="6" stroke="currentColor" fill="transparent" r="70" cx="75" cy="75" stroke-linecap="round" stroke-dashoffset="440" />
+                                <text id="timer-display" x="75" y="70" text-anchor="middle" dominant-baseline="central" class="text-5xl font-extrabold text-gray-900">25:00</text>
+                                <text id="timer-mode-display" x="75" y="95" text-anchor="middle" dominant-baseline="central" class="text-sm font-semibold text-indigo-500">Focus (1/4)</text>
+                            </svg>
+                        </div>
+
+                        <div class="flex justify-center space-x-4 mb-6">
+                            <button id="timer-start-btn" onclick="toggleTimer(true)" class="p-4 bg-green-500 text-white rounded-full shadow-lg hover:bg-green-600 transition disabled:opacity-50 hover:shadow-xl">
+                                <i data-lucide="play" class="w-6 h-6"></i>
+                            </button>
+                            <button id="timer-pause-btn" onclick="toggleTimer(false)" class="p-4 bg-yellow-500 text-white rounded-full shadow-lg hover:bg-yellow-600 transition hidden hover:shadow-xl">
+                                <i data-lucide="pause" class="w-6 h-6"></i>
+                            </button>
+                            <button onclick="resetTimer()" class="p-4 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 transition hover:shadow-xl">
+                                <i data-lucide="rotate-ccw" class="w-6 h-6"></i>
+                            </button>
+                        </div>
+
+                        <div class="mt-4 space-y-3">
+                            <p class="text-sm font-medium text-gray-600">Presets:</p>
+                            <div class="grid grid-cols-3 gap-2">
+                                <button onclick="setPreset('default')" class="preset-btn p-2 text-sm bg-indigo-100 text-indigo-800 rounded-lg hover:bg-indigo-200 transition">25/5 Default</button>
+                                <button onclick="setPreset('deep')" class="preset-btn p-2 text-sm bg-indigo-100 text-indigo-800 rounded-lg hover:bg-indigo-200 transition">50/10 Deep</button>
+                                <button onclick="setPreset('balanced')" class="preset-btn p-2 text-sm bg-indigo-100 text-indigo-800 rounded-lg hover:bg-indigo-200 transition">45/15 Balanced</button>
+                            </div>
+                            <div id="custom-settings" class="bg-gray-100 p-3 rounded-xl flex space-x-2 text-sm">
+                                <label class="flex-1">Focus (min): <input type="number" id="focus-input" value="25" min="1" class="w-full mt-1 p-1 border rounded-md" onchange="updateCustomTimer()"></label>
+                                <label class="flex-1">Break (min): <input type="number" id="break-input" value="5" min="1" class="w-full mt-1 p-1 border rounded-md" onchange="updateCustomTimer()"></label>
+                                <label class="flex-1">Sessions: <input type="number" id="sessions-input" value="4" min="1" class="w-full mt-1 p-1 border rounded-md" onchange="updateCustomTimer()"></label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Column 2: Notes Editor -->
+                    <div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-xl border border-gray-100">
+                        <h3 class="text-xl font-semibold mb-4 flex items-center text-gray-800">
+                            <i data-lucide="notebook-text" class="w-5 h-5 mr-2"></i> Distraction-Free Notes
+                        </h3>
+                        <div id="notes-editor" contenteditable="true" class="notes-editor min-h-64 p-4 border-2 border-gray-200 rounded-lg focus:border-indigo-400 focus:outline-none custom-scrollbar overflow-y-auto" placeholder="Jot down insights, mnemonics, and summaries here...">
+                            <!-- Notes content loaded here -->
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">Ctrl + S to manually save notes.</p>
+                    </div>
+                </div>
+
+                <!-- Active Recall Engine -->
+                <div class="mt-6 bg-white p-6 rounded-2xl shadow-xl border border-gray-100">
+                    <h3 class="text-xl font-semibold mb-4 flex items-center text-indigo-600">
+                        <i data-lucide="lightbulb" class="w-5 h-5 mr-2"></i> Active Recall Engine (AI-Powered)
+                    </h3>
+
+                    <div id="recall-input-form" class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <input type="text" id="recall-topic" placeholder="e.g., Photosynthesis steps" class="p-3 border rounded-lg md:col-span-2" required>
+                            <select id="recall-level" class="p-3 border rounded-lg">
+                                <option value="" disabled selected>Grade Level/Complexity</option>
+                                <option value="Grade 7 Science">Grade 7 Science</option>
+                                <option value="Grade 11 History">Grade 11 History</option>
+                                <option value="University/Advanced">University/Advanced</option>
+                            </select>
+                        </div>
+                        <div class="flex space-x-4">
+                             <button onclick="generateQuiz('quick')" class="flex-1 p-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition duration-150 shadow-md hover:shadow-lg disabled:opacity-50" id="generate-quiz-btn-quick">
+                                Quick Recall (10 Q)
+                            </button>
+                            <button onclick="generateQuiz('deep')" class="flex-1 p-3 bg-indigo-500 text-white font-medium rounded-lg hover:bg-indigo-600 transition duration-150 shadow-md hover:shadow-lg disabled:opacity-50" id="generate-quiz-btn-deep">
+                                Deep Recall (20+ Q)
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="quiz-loading" class="hidden text-center p-8">
+                        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+                        <p class="text-indigo-600 font-medium">Generating your customized flashcards...</p>
+                    </div>
+
+                    <div id="quiz-error" class="hidden bg-red-100 text-red-700 p-4 rounded-lg mt-4" role="alert">
+                        <p class="font-semibold">Error:</p>
+                        <p id="quiz-error-message"></p>
+                    </div>
+                    
+                    <div id="quiz-container" class="mt-4 space-y-4">
+                        <!-- Flashcards will be dynamically loaded here -->
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- 3. Floating "Memory Boost Techniques" Button -->
+    <button id="techniques-btn" onclick="showOnboarding(true)" class="fixed bottom-4 right-4 p-4 bg-pink-500 text-white rounded-full shadow-xl hover:bg-pink-600 transition duration-300 z-50 flex items-center transform hover:scale-105">
+        <i data-lucide="brain-circuit" class="w-6 h-6 mr-2 hidden md:inline"></i>
+        <span class="font-semibold">Memory Boost Techniques</span>
+    </button>
+
+    <!-- 4. MODAL: Onboarding / Techniques List -->
+    <div id="onboarding-modal" class="fixed inset-0 bg-black bg-opacity-70 z-[100] hidden items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl overflow-hidden transform transition-all duration-300 scale-100">
+            <div id="onboarding-header" class="p-4 border-b flex justify-between items-center bg-indigo-500 text-white">
+                <h2 class="text-xl font-bold">🧠 Memory Training Centre</h2>
+                <button onclick="showOnboarding(false)" class="p-1 rounded-full hover:bg-indigo-600 transition">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            <div id="onboarding-content" class="p-8">
+                <!-- Content slides injected here -->
+            </div>
+            <div id="onboarding-footer" class="p-4 border-t flex justify-between items-center">
+                <button id="prev-btn" onclick="prevSlide()" class="py-2 px-4 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition disabled:opacity-50">Previous</button>
+                <div id="slide-indicators" class="flex space-x-2"></div>
+                <button id="next-btn" onclick="nextSlide()" class="py-2 px-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">Next</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. MODAL: Generic Confirmation / Alert (Replacing alert/confirm) -->
+    <div id="confirmation-modal" class="fixed inset-0 bg-black bg-opacity-70 z-[110] hidden items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden p-6 text-center">
+            <h3 id="modal-title" class="text-xl font-bold mb-3"></h3>
+            <p id="modal-message" class="text-gray-600 mb-6"></p>
+            <div id="modal-actions" class="flex justify-center space-x-4">
+                <!-- Buttons injected by showConfirmation -->
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ========================================================================= -->
+    <!-- JAVASCRIPT & FIREBASE LOGIC -->
+    <!-- ========================================================================= -->
+    <script type="module">
+        // Firebase Imports
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // --- GLOBAL VARIABLES & INITIALIZATION ---
+        setLogLevel('Debug');
+        let app, db, auth;
+        let userId = 'default-user'; // Fallback
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-study-buddy';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        
+        let studyCentres = [];
+        let activeCentreId = null;
+        let activeCentre = null;
+        let timerInterval = null;
+        let timerState = {
+            isRunning: false,
+            isFocusMode: true,
+            timeRemaining: 0, // in seconds
+            currentSession: 1,
+            focusDuration: 25 * 60,
+            breakDuration: 5 * 60,
+            totalSessions: 4,
+            presetName: 'default'
+        };
+
+        const API_URL_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/';
+        const MODEL_NAME = 'gemini-2.5-flash-preview-09-2025';
+        const API_KEY = ''; // Managed by Canvas
+
+        // --- UI ELEMENTS ---
+        const ui = {
+            userIdDisplay: document.getElementById('user-id-display'),
+            centreList: document.getElementById('centre-list'),
+            noCentreSelected: document.getElementById('no-centre-selected'),
+            activeCentreView: document.getElementById('active-centre-view'),
+            centreTitle: document.getElementById('centre-title'),
+            notesEditor: document.getElementById('notes-editor'),
+            timerDisplay: document.getElementById('timer-display'),
+            timerModeDisplay: document.getElementById('timer-mode-display'),
+            timerProgress: document.getElementById('timer-progress'),
+            timerStartBtn: document.getElementById('timer-start-btn'),
+            timerPauseBtn: document.getElementById('timer-pause-btn'),
+            focusInput: document.getElementById('focus-input'),
+            breakInput: document.getElementById('break-input'),
+            sessionsInput: document.getElementById('sessions-input'),
+            recallTopic: document.getElementById('recall-topic'),
+            recallLevel: document.getElementById('recall-level'),
+            quizContainer: document.getElementById('quiz-container'),
+            quizLoading: document.getElementById('quiz-loading'),
+            quizError: document.getElementById('quiz-error'),
+            quizErrorMessage: document.getElementById('quiz-error-message'),
+        };
+
+        // --- UTILITY FUNCTIONS ---
+
+        /** Custom Modal for Alerts/Confirmations */
+        function showConfirmation(title, message, isConfirm = false, onConfirm = () => {}, onCancel = () => {}) {
+            const modal = document.getElementById('confirmation-modal');
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-message').textContent = message;
+            const actions = document.getElementById('modal-actions');
+            actions.innerHTML = '';
+
+            const close = () => modal.classList.add('hidden');
+
+            if (isConfirm) {
+                const cancelBtn = document.createElement('button');
+                cancelBtn.textContent = 'Cancel';
+                cancelBtn.className = 'py-2 px-4 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition';
+                cancelBtn.onclick = () => { close(); onCancel(); };
+                actions.appendChild(cancelBtn);
+
+                const confirmBtn = document.createElement('button');
+                confirmBtn.textContent = 'Confirm';
+                confirmBtn.className = 'py-2 px-4 bg-red-600 text-white rounded-lg hover:bg-red-700 transition';
+                confirmBtn.onclick = () => { close(); onConfirm(); };
+                actions.appendChild(confirmBtn);
+            } else {
+                const okBtn = document.createElement('button');
+                okBtn.textContent = 'OK';
+                okBtn.className = 'py-2 px-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition';
+                okBtn.onclick = close;
+                actions.appendChild(okBtn);
+            }
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        // --- FIREBASE AND AUTHENTICATION ---
+
+        async function initFirebase() {
+            if (!firebaseConfig) {
+                console.error("Firebase config is missing.");
+                return;
+            }
+
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // Sign in with custom token or anonymously
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                // Wait for auth state to be established
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        ui.userIdDisplay.textContent = `User ID: ${userId}`;
+                        // Start listening for centres only after auth is ready
+                        listenForStudyCentres();
+                    } else {
+                        // User is signed out or anonymous sign-in failed (shouldn't happen with our setup)
+                        // userId remains 'default-user' or a fallback is needed for anonymous
+                        ui.userIdDisplay.textContent = `User ID: Anonymous`;
+                    }
+                });
+            } catch (error) {
+                console.error("Firebase initialization failed:", error);
+                showConfirmation("Error", "Could not connect to the database. Please check console for details.");
+            }
+        }
+
+        // --- STUDY CENTRE PERSISTENCE (FIRESTORE) ---
+
+        function getCentreCollectionRef() {
+            // Path: /artifacts/{appId}/users/{userId}/studyCentres
+            return collection(db, `artifacts/${appId}/users/${userId}/studyCentres`);
+        }
+
+        function listenForStudyCentres() {
+            const q = query(getCentreCollectionRef());
+            onSnapshot(q, (snapshot) => {
+                studyCentres = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                studyCentres.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)); // Sort by creation time
+
+                renderStudyCentres();
+
+                // If no active centre, try to select the first one
+                if (!activeCentreId && studyCentres.length > 0) {
+                    selectStudyCentre(studyCentres[0].id);
+                } else if (activeCentreId) {
+                    // Refresh the current active centre's data
+                    const updatedCentre = studyCentres.find(c => c.id === activeCentreId);
+                    if (!updatedCentre) {
+                        // If current centre was deleted elsewhere, fall back to no selection
+                        activeCentreId = null;
+                        activeCentre = null;
+                        renderActiveCentre();
+                    } else if (activeCentre) {
+                        // Only update properties if the centre still exists
+                        activeCentre = updatedCentre;
+                        // Re-render to update notes/quiz if changed by another device
+                        renderActiveCentre();
+                    }
+                }
+            }, (error) => {
+                console.error("Error listening to study centres:", error);
+                showConfirmation("Database Error", "Failed to load study centre data in real-time.");
+            });
+        }
+
+        async function newStudyCentre() {
+            if (!db || !userId || userId === 'default-user') return showConfirmation("Wait", "Database not initialized. Please wait for user authentication.");
+
+            const newCentre = {
+                title: 'New Centre ' + (studyCentres.length + 1),
+                notes: 'Welcome to your new Study Centre! Use this space for your notes and summaries.',
+                pomodoro: { focus: 25, break: 5, sessions: 4, presetName: 'default' },
+                quiz: { questions: [] },
+                createdAt: new Date(),
+            };
+
+            try {
+                const docRef = await addDoc(getCentreCollectionRef(), newCentre);
+                selectStudyCentre(docRef.id);
+            } catch (e) {
+                console.error("Error adding document: ", e);
+                showConfirmation("Error", "Failed to create new study centre.");
+            }
+        }
+
+        async function saveStudyCentre(dataToSave = null) {
+            if (!db || !activeCentreId || !activeCentre) return;
+
+            const data = dataToSave || {
+                title: ui.centreTitle.value || 'Untitled',
+                notes: ui.notesEditor.innerHTML,
+                pomodoro: { 
+                    focus: timerState.focusDuration / 60, // Save in minutes
+                    break: timerState.breakDuration / 60, // Save in minutes
+                    sessions: timerState.totalSessions,
+                    presetName: timerState.presetName
+                },
+                quiz: activeCentre.quiz,
+            };
+
+            const centreRef = doc(db, `artifacts/${appId}/users/${userId}/studyCentres`, activeCentreId);
+            try {
+                await setDoc(centreRef, data, { merge: true });
+                console.log("Centre saved successfully.");
+            } catch (e) {
+                console.error("Error updating document: ", e);
+            }
+        }
+
+        async function deleteCentreConfirmation() {
+            if (!activeCentreId || !activeCentre) return;
+            showConfirmation(
+                "Confirm Deletion",
+                `Are you sure you want to delete "${activeCentre.title}"? This cannot be undone.`,
+                true,
+                async () => {
+                    const centreRef = doc(db, `artifacts/${appId}/users/${userId}/studyCentres`, activeCentreId);
+                    try {
+                        await deleteDoc(centreRef);
+                        // The onSnapshot listener will handle resetting activeCentreId and rerendering
+                        stopTimer(true);
+                        showConfirmation("Success", "Study Centre deleted.");
+                    } catch (e) {
+                        console.error("Error deleting document: ", e);
+                        showConfirmation("Error", "Failed to delete study centre.");
+                    }
+                }
+            );
+        }
+
+        /** New function to handle title update from the sidebar */
+        async function handleTitleEdit(centreId, newTitle) {
+            if (!db || !userId) return;
+
+            const centreRef = doc(db, `artifacts/${appId}/users/${userId}/studyCentres`, centreId);
+            try {
+                await updateDoc(centreRef, { title: newTitle });
+                console.log(`Title for ${centreId} updated to: ${newTitle}`);
+                // onSnapshot will handle the UI update (renderStudyCentres and renderActiveCentre)
+            } catch (e) {
+                console.error("Error updating title: ", e);
+                showConfirmation("Error", "Failed to rename study centre.");
+            }
+        }
+
+
+        // Auto-save notes and title on change
+        ui.notesEditor.addEventListener('input', () => {
+            if (activeCentre) {
+                // Throttle the save to avoid excessive writes
+                clearTimeout(activeCentre.saveTimer);
+                activeCentre.saveTimer = setTimeout(() => saveStudyCentre(), 1000);
+            }
+        });
+        ui.centreTitle.addEventListener('input', () => {
+            if (activeCentre) {
+                clearTimeout(activeCentre.saveTimer);
+                activeCentre.saveTimer = setTimeout(() => saveStudyCentre(), 1000);
+            }
+        });
+
+        // Manual save with Ctrl+S
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 's') {
+                e.preventDefault();
+                saveStudyCentre();
+                showConfirmation("Saved", "Notes manually saved to Firestore.");
+            }
+        });
+
+
+        // --- UI RENDERING & CENTRE SWITCHING ---
+
+        function renderStudyCentres() {
+            ui.centreList.innerHTML = '';
+            studyCentres.forEach(centre => {
+                const isActive = centre.id === activeCentreId;
+                const centreElement = document.createElement('div');
+                centreElement.className = `p-3 rounded-xl cursor-pointer transition flex items-center justify-between group ${isActive ? 'bg-indigo-100 border-l-4 border-indigo-600 shadow-md' : 'hover:bg-gray-100'}`;
+                
+                // Use a descriptive/safe title for embedding in onclick
+                const safeTitle = centre.title.replace(/'/g, "\\'");
+
+                centreElement.innerHTML = `
+                    <!-- Text/Input Container -->
+                    <div class="flex-grow min-w-0 pr-2" onclick="selectStudyCentre('${centre.id}')">
+                        <p id="title-display-${centre.id}" class="font-medium text-gray-800 truncate">${centre.title}</p>
+                        <!-- Inline editing input field (initially hidden) -->
+                        <input type="text" id="title-input-${centre.id}" value="${centre.title}" 
+                               class="hidden w-full p-1 -m-1 border border-indigo-300 rounded-md text-sm font-medium focus:ring-indigo-500 focus:border-indigo-500" />
+                        <p class="text-xs text-gray-500">${centre.quiz?.questions?.length || 0} Qs</p>
+                    </div>
+                    
+                    <!-- Edit Button -->
+                    <button onclick="startEdit('${centre.id}', '${safeTitle}', event)" 
+                            class="p-1 rounded-full text-gray-400 hover:text-indigo-600 transition" 
+                            title="Edit Name">
+                        <i data-lucide="pencil" class="w-4 h-4"></i>
+                    </button>
+                `;
+                ui.centreList.appendChild(centreElement);
+            });
+            lucide.createIcons(); // Re-render icons after adding elements
+        }
+
+        /** Handles inline title editing in the sidebar */
+        function startEdit(centreId, currentTitle, event) {
+            event.stopPropagation(); // Stop selectStudyCentre from firing
+
+            const display = document.getElementById(`title-display-${centreId}`);
+            const input = document.getElementById(`title-input-${centreId}`);
+            
+            if (!display || !input) return;
+
+            // Show input, hide text
+            display.classList.add('hidden');
+            input.classList.remove('hidden');
+            input.focus();
+            input.select();
+
+            // Setup save handlers (blur and Enter key)
+            const saveHandler = () => {
+                const newTitle = input.value.trim();
+                if (newTitle && newTitle !== currentTitle) {
+                    handleTitleEdit(centreId, newTitle);
+                } else {
+                    // Revert if cancelled or empty
+                    input.value = currentTitle;
+                }
+                // Revert to display mode
+                input.classList.add('hidden');
+                display.classList.remove('hidden');
+                input.removeEventListener('blur', saveHandler);
+                input.removeEventListener('keydown', keydownHandler);
+            };
+
+            const keydownHandler = (e) => {
+                if (e.key === 'Enter') {
+                    input.blur(); // Trigger blur handler
+                } else if (e.key === 'Escape') {
+                    input.value = currentTitle;
+                    input.blur(); // Trigger blur handler (which reverts the title)
+                }
+            };
+
+            // Use capture phase to ensure blur fires before re-render if another element is clicked
+            input.addEventListener('blur', saveHandler, { once: true, capture: true }); 
+            input.addEventListener('keydown', keydownHandler);
+        }
+
+        function selectStudyCentre(id) {
+            // Check if switching centres while timer is running
+            if (timerState.isRunning && activeCentreId !== id) {
+                showConfirmation("Timer Running", "Please pause or reset the timer before switching study centres.");
+                return;
+            }
+
+            activeCentreId = id;
+            activeCentre = studyCentres.find(c => c.id === id);
+
+            if (activeCentre) {
+                // Load Pomodoro config
+                timerState.focusDuration = (activeCentre.pomodoro?.focus || 25) * 60;
+                timerState.breakDuration = (activeCentre.pomodoro?.break || 5) * 60;
+                timerState.totalSessions = activeCentre.pomodoro?.sessions || 4;
+                timerState.presetName = activeCentre.pomodoro?.presetName || 'custom';
+                
+                resetTimer(true); // Reset timer to new centre's config
+            }
+            
+            renderActiveCentre();
+        }
+
+        function renderActiveCentre() {
+            if (!activeCentre) {
+                ui.noCentreSelected.classList.remove('hidden');
+                ui.activeCentreView.classList.add('hidden');
+                return;
+            }
+
+            ui.noCentreSelected.classList.add('hidden');
+            ui.activeCentreView.classList.remove('hidden');
+
+            // Notes and Title
+            ui.centreTitle.value = activeCentre.title;
+            ui.notesEditor.innerHTML = activeCentre.notes;
+            
+            // Render Quiz Section
+            renderQuiz();
+
+            // Set Pomodoro inputs to match current state (in minutes)
+            ui.focusInput.value = timerState.focusDuration / 60;
+            ui.breakInput.value = timerState.breakDuration / 60;
+            ui.sessionsInput.value = timerState.totalSessions;
+            
+            // Highlight active preset button
+            document.querySelectorAll('.preset-btn').forEach(btn => {
+                btn.classList.remove('bg-indigo-600', 'text-white');
+                btn.classList.add('bg-indigo-100', 'text-indigo-800');
+            });
+            const activePresetBtn = document.querySelector(`[onclick="setPreset('${timerState.presetName}')"]`);
+            if (activePresetBtn) {
+                activePresetBtn.classList.remove('bg-indigo-100', 'text-indigo-800');
+                activePresetBtn.classList.add('bg-indigo-600', 'text-white');
+            }
+
+            // Re-render centre list to highlight active one
+            renderStudyCentres();
+        }
+
+        // --- POMODORO TIMER LOGIC ---
+
+        function updateTimerDisplay() {
+            const minutes = Math.floor(timerState.timeRemaining / 60);
+            const seconds = timerState.timeRemaining % 60;
+            ui.timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            
+            const totalDuration = timerState.isFocusMode ? timerState.focusDuration : timerState.breakDuration;
+            const progress = totalDuration - timerState.timeRemaining;
+            const percentage = (progress / totalDuration) * 100;
+
+            // Update circular progress (Circumference ~ 440)
+            const circumference = 440; 
+            const offset = circumference - (percentage / 100) * circumference;
+            ui.timerProgress.style.strokeDashoffset = offset;
+            ui.timerProgress.classList.toggle('text-indigo-500', timerState.isFocusMode);
+            ui.timerProgress.classList.toggle('text-green-500', !timerState.isFocusMode);
+        }
+
+        function toggleTimer(start) {
+            if (!activeCentreId) {
+                return showConfirmation("Start Session", "Please create or select a Study Centre before starting the timer.");
+            }
+            timerState.isRunning = start;
+            
+            ui.timerStartBtn.classList.toggle('hidden', start);
+            ui.timerPauseBtn.classList.toggle('hidden', !start);
+
+            if (start) {
+                if (timerState.timeRemaining <= 0) {
+                    // Initialize timer at start
+                    timerState.timeRemaining = timerState.isFocusMode ? timerState.focusDuration : timerState.breakDuration;
+                }
+                timerInterval = setInterval(tick, 1000);
+            } else {
+                clearInterval(timerInterval);
+            }
+            saveStudyCentre(); // Save updated state (running/paused) to Firestore
+        }
+
+        function tick() {
+            if (timerState.timeRemaining > 0) {
+                timerState.timeRemaining--;
+            } else {
+                clearInterval(timerInterval);
+                playNotificationSound();
+                
+                if (timerState.isFocusMode) {
+                    timerState.currentSession++;
+                    if (timerState.currentSession > timerState.totalSessions) {
+                        // All sessions complete
+                        showConfirmation("Session Complete!", "You have completed all your study sessions. Great job!", false, () => {});
+                        resetTimer(true);
+                        return;
+                    }
+                    // Start Break
+                    timerState.isFocusMode = false;
+                    timerState.timeRemaining = timerState.breakDuration;
+                    ui.timerModeDisplay.textContent = `Break (${timerState.currentSession}/${timerState.totalSessions})`;
+                    toggleTimer(true);
+                } else {
+                    // Start next Focus session
+                    timerState.isFocusMode = true;
+                    timerState.timeRemaining = timerState.focusDuration;
+                    ui.timerModeDisplay.textContent = `Focus (${timerState.currentSession}/${timerState.totalSessions})`;
+                    toggleTimer(true);
+                }
+            }
+            updateTimerDisplay();
+        }
+
+        function stopTimer(silent = false) {
+            clearInterval(timerInterval);
+            timerState.isRunning = false;
+            ui.timerStartBtn.classList.remove('hidden');
+            ui.timerPauseBtn.classList.add('hidden');
+            if (!silent) {
+                showConfirmation("Timer Stopped", "The Pomodoro timer has been manually stopped.");
+            }
+        }
+
+        function resetTimer(silent = false) {
+            stopTimer(true); // Stop interval but don't show confirmation
+            timerState.isFocusMode = true;
+            timerState.currentSession = 1;
+            timerState.timeRemaining = timerState.focusDuration;
+            
+            // ENSURE timer mode display includes session count on reset
+            ui.timerModeDisplay.textContent = `Focus (${timerState.currentSession}/${timerState.totalSessions})`;
+            updateTimerDisplay();
+            if (activeCentreId) {
+                // Save settings in case they were custom changed or to reset running state
+                saveStudyCentre(); 
+                renderActiveCentre(); // Update preset button state
+            }
+        }
+
+        function setPreset(preset) {
+            stopTimer(true);
+            timerState.presetName = preset;
+            switch (preset) {
+                case 'deep':
+                    timerState.focusDuration = 50 * 60;
+                    timerState.breakDuration = 10 * 60;
+                    timerState.totalSessions = 2;
+                    break;
+                case 'balanced':
+                    timerState.focusDuration = 45 * 60;
+                    timerState.breakDuration = 15 * 60;
+                    timerState.totalSessions = 3;
+                    break;
+                case 'default':
+                default:
+                    timerState.focusDuration = 25 * 60;
+                    timerState.breakDuration = 5 * 60;
+                    timerState.totalSessions = 4;
+            }
+            resetTimer();
+        }
+
+        function updateCustomTimer() {
+            stopTimer(true);
+            timerState.presetName = 'custom';
+            // Parse inputs, ensuring they are at least 1
+            timerState.focusDuration = Math.max(1, parseInt(ui.focusInput.value || 1, 10)) * 60;
+            timerState.breakDuration = Math.max(1, parseInt(ui.breakInput.value || 1, 10)) * 60;
+            timerState.totalSessions = Math.max(1, parseInt(ui.sessionsInput.value || 1, 10));
+
+            // Update UI to reflect minimums if user tried to enter zero or negative
+            ui.focusInput.value = timerState.focusDuration / 60;
+            ui.breakInput.value = timerState.breakDuration / 60;
+            ui.sessionsInput.value = timerState.totalSessions;
+
+            resetTimer();
+        }
+
+        function playNotificationSound() {
+            // Simple notification sound using the Web Audio API (Tone.js is overkill here)
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(440, audioCtx.currentTime); // A4 note
+                gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 0.1);
+                gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.6);
+
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.6);
+            } catch (e) {
+                console.warn("Audio playback failed:", e);
+            }
+        }
+
+        // --- AI ACTIVE RECALL ENGINE LOGIC (GEMINI API) ---
+
+        function setQuizLoading(isLoading) {
+            document.querySelectorAll('#recall-input-form button').forEach(btn => btn.disabled = isLoading);
+            ui.quizLoading.classList.toggle('hidden', !isLoading);
+            ui.quizError.classList.add('hidden');
+        }
+
+        async function generateQuiz(mode) {
+            if (!activeCentreId) {
+                return showConfirmation("Recall Error", "Please select a Study Centre first.");
+            }
+            const topic = ui.recallTopic.value.trim();
+            const level = ui.recallLevel.value;
+
+            if (!topic || !level) {
+                return showConfirmation("Recall Error", "Please enter a Topic and select a Grade Level.");
+            }
+
+            setQuizLoading(true);
+            ui.quizContainer.innerHTML = ''; // Clear previous quiz
+
+            const questionCount = mode === 'quick' ? 10 : 25; // Deep mode generates more questions
+
+            const userQuery = `Generate a set of ${questionCount} concise flashcards (question/answer pairs) on the topic: "${topic}" for a student at the "${level}" level. Ensure the questions promote active recall and are relevant to the topic and level.`;
+
+            const systemInstruction = "You are a specialized flashcard generator for students. Your output MUST be a strict JSON object following the provided schema, containing a topic name and an array of flashcards (question and answer strings). Do not include any text outside the JSON block.";
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            "topic": { "type": "STRING" },
+                            "questions": {
+                                "type": "ARRAY",
+                                "items": {
+                                    "type": "OBJECT",
+                                    "properties": {
+                                        "q": { "type": "STRING", "description": "The concise question for the flashcard." },
+                                        "a": { "type": "STRING", "description": "The detailed, accurate answer for the flashcard." }
+                                    },
+                                    "propertyOrdering": ["q", "a"]
+                                }
+                            }
+                        },
+                        "propertyOrdering": ["topic", "questions"]
+                    }
+                },
+                systemInstruction: { parts: [{ text: systemInstruction }] },
+                tools: [{ "google_search": {} }], // Enable grounding for factual questions
+            };
+
+            const apiUrl = `${API_URL_BASE}${MODEL_NAME}:generateContent?key=${API_KEY}`;
+            const maxRetries = 3;
+            let responseJson;
+
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) throw new Error(`API returned status ${response.status}`);
+                    
+                    const result = await response.json();
+                    
+                    if (result.candidates && result.candidates.length > 0 && result.candidates[0].content?.parts?.length > 0) {
+                        const jsonText = result.candidates[0].content.parts[0].text;
+                        responseJson = JSON.parse(jsonText);
+                        break; // Success
+                    } else {
+                        throw new Error("Invalid response structure from API.");
+                    }
+                } catch (error) {
+                    console.error(`Attempt ${i + 1} failed:`, error);
+                    if (i === maxRetries - 1) {
+                         setQuizLoading(false);
+                         ui.quizError.classList.remove('hidden');
+                         ui.quizErrorMessage.textContent = `Failed to generate quiz after ${maxRetries} attempts. Please try a different topic or check your network.`;
+                         return;
+                    }
+                    // Exponential backoff
+                    await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+                }
+            }
+
+            if (responseJson && responseJson.questions && responseJson.questions.length > 0) {
+                activeCentre.quiz = responseJson;
+                saveStudyCentre();
+                renderQuiz();
+            } else {
+                ui.quizError.classList.remove('hidden');
+                ui.quizErrorMessage.textContent = "The AI could not generate valid flashcards for that topic/level. Please refine your input.";
+            }
+
+            setQuizLoading(false);
+        }
+
+        function renderQuiz() {
+            ui.quizContainer.innerHTML = '';
+            if (!activeCentre || !activeCentre.quiz || activeCentre.quiz.questions.length === 0) {
+                ui.quizContainer.innerHTML = '<p class="text-gray-500 italic">No quiz generated yet. Enter a topic above!</p>';
+                return;
+            }
+
+            activeCentre.quiz.questions.forEach((card, index) => {
+                const cardElement = document.createElement('div');
+                cardElement.className = 'flashcard bg-gray-50 p-4 rounded-xl shadow transition hover:shadow-lg cursor-pointer';
+                cardElement.innerHTML = `
+                    <div class="card-front">
+                        <p class="text-sm font-semibold text-indigo-600 mb-1">Question ${index + 1}:</p>
+                        <p class="text-gray-800">${card.q}</p>
+                        <button class="mt-2 text-xs font-medium text-pink-500 hover:text-pink-700">Show Answer</button>
+                    </div>
+                    <div class="card-back hidden mt-2 pt-2 border-t border-dashed border-gray-300">
+                        <p class="text-sm font-semibold text-green-600 mb-1">Answer:</p>
+                        <p class="text-gray-600">${card.a}</p>
+                        <button class="mt-2 text-xs font-medium text-pink-500 hover:text-pink-700">Hide Answer</button>
+                    </div>
+                `;
+                // Toggle between front and back
+                cardElement.onclick = (e) => {
+                    const front = cardElement.querySelector('.card-front');
+                    const back = cardElement.querySelector('.card-back');
+                    front.classList.toggle('hidden');
+                    back.classList.toggle('hidden');
+                    e.stopPropagation(); // Prevent the click from affecting other elements
+                };
+                // Make the inner buttons also toggle
+                cardElement.querySelectorAll('button').forEach(btn => {
+                    btn.onclick = (e) => {
+                        const front = cardElement.querySelector('.card-front');
+                        const back = cardElement.querySelector('.card-back');
+                        front.classList.toggle('hidden');
+                        back.classList.toggle('hidden');
+                        e.stopPropagation(); // Important to stop the card click event from firing twice
+                    };
+                });
+
+                ui.quizContainer.appendChild(cardElement);
+            });
+        }
+
+        // --- ONBOARDING / TECHNIQUES LOGIC ---
+
+        const techniques = [
+            {
+                title: "Method of Loci (Memory Palace)",
+                concept: "Visualize a familiar route (like your home) and place bizarre mental 'objects' along it to represent facts.",
+                activity: "Pick five rooms in your house. For five facts, imagine something strange or funny in each room and walk through mentally to recall them.",
+                icon: "house-line"
+            },
+            {
+                title: "Story Chaining",
+                concept: "Link facts in a fun, logical, or emotional story so one memory triggers the next.",
+                activity: "Create a 30-second story using five vocabulary words. Each word must cause the next scene to happen.",
+                icon: "link"
+            },
+            {
+                title: "Exaggeration (Absurdity)",
+                concept: "Make study material absurd, emotional, or wildly exaggerated to make it unforgettable.",
+                activity: "Make a ridiculous scenario that includes a date, name, or formula you must memorize. The louder, bigger, or funnier the better.",
+                icon: "megaphone"
+            },
+            {
+                title: "Teach-Back (Role-Play)",
+                concept: "Explaining ideas aloud helps you instantly find gaps in your understanding.",
+                activity: "Teach a friend or an imaginary audience a topic using two random objects as props — the stranger the better.",
+                icon: "user-check"
+            },
+            {
+                title: "Chunking into Visual Groups",
+                concept: "Group items into clusters and assign a visual mascot or theme to each group.",
+                activity: "For a list of 12 items, make 3 clusters of 4. Draw or imagine a mascot for each group to remember all 12.",
+                icon: "grid-3x3"
+            }
+        ];
+
+        let currentSlideIndex = 0;
+        const onboardingModal = document.getElementById('onboarding-modal');
+        const onboardingContent = document.getElementById('onboarding-content');
+        const slideIndicators = document.getElementById('slide-indicators');
+
+        function showOnboarding(show) {
+            if (show) {
+                onboardingModal.classList.remove('hidden');
+                onboardingModal.classList.add('flex');
+                currentSlideIndex = 0; // Always start from the beginning
+                renderSlide();
+            } else {
+                onboardingModal.classList.add('hidden');
+                onboardingModal.classList.remove('flex');
+            }
+        }
+
+        function renderSlide() {
+            const tech = techniques[currentSlideIndex];
+            onboardingContent.innerHTML = `
+                <div class="text-center p-4">
+                    <i data-lucide="${tech.icon}" class="w-16 h-16 text-indigo-600 mx-auto mb-4"></i>
+                    <h3 class="text-2xl font-bold text-gray-800 mb-4">${tech.title}</h3>
+                </div>
+                <div class="bg-indigo-50 p-6 rounded-xl mb-4">
+                    <p class="font-semibold text-indigo-700 mb-2">Concept:</p>
+                    <p class="text-indigo-900">${tech.concept}</p>
+                </div>
+                <div class="bg-pink-50 p-6 rounded-xl">
+                    <p class="font-semibold text-pink-700 mb-2">💡 Activity to Try:</p>
+                    <p class="text-pink-900">${tech.activity}</p>
+                </div>
+            `;
+            
+            // Render Indicators
+            slideIndicators.innerHTML = techniques.map((_, i) =>
+                `<span class="w-3 h-3 rounded-full ${i === currentSlideIndex ? 'bg-indigo-600' : 'bg-gray-300'} cursor-pointer" onclick="goToSlide(${i})"></span>`
+            ).join('');
+
+            // Update Navigation Buttons
+            document.getElementById('prev-btn').disabled = currentSlideIndex === 0;
+            const nextBtn = document.getElementById('next-btn');
+            if (currentSlideIndex === techniques.length - 1) {
+                nextBtn.textContent = 'Start Studying!';
+                nextBtn.onclick = () => showOnboarding(false);
+            } else {
+                nextBtn.textContent = 'Next Technique';
+                nextBtn.onclick = nextSlide;
+            }
+            lucide.createIcons();
+        }
+
+        window.prevSlide = () => {
+            if (currentSlideIndex > 0) {
+                currentSlideIndex--;
+                renderSlide();
+            }
+        };
+
+        window.nextSlide = () => {
+            if (currentSlideIndex < techniques.length - 1) {
+                currentSlideIndex++;
+                renderSlide();
+            }
+        };
+        
+        window.goToSlide = (index) => {
+            currentSlideIndex = index;
+            renderSlide();
+        };
+
+        // Expose functions globally for HTML access
+        window.newStudyCentre = newStudyCentre;
+        window.selectStudyCentre = selectStudyCentre;
+        window.deleteCentreConfirmation = deleteCentreConfirmation;
+        window.toggleTimer = toggleTimer;
+        window.resetTimer = resetTimer;
+        window.setPreset = setPreset;
+        window.updateCustomTimer = updateCustomTimer;
+        window.generateQuiz = generateQuiz;
+        window.showOnboarding = showOnboarding;
+        // Exposing new editing functions
+        window.startEdit = startEdit;
+        window.handleTitleEdit = handleTitleEdit;
+
+
+        // --- EXPORT FUNCTIONALITY (Mock) ---
+        window.exportCentre = () => {
+            if (!activeCentre) return;
+            // Get notes content as plain text, not HTML
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = ui.notesEditor.innerHTML;
+            const notesText = tempDiv.textContent || tempDiv.innerText || '';
+
+            const content = `
+                Title: ${activeCentre.title}\n\n
+                Notes:\n${notesText}\n\n
+                Pomodoro Config: Focus ${timerState.focusDuration / 60} min / Break ${timerState.breakDuration / 60} min / ${timerState.totalSessions} sessions\n\n
+                --- Active Recall Quiz ---\n
+                Topic: ${activeCentre.quiz?.topic || 'N/A'}\n
+                Questions:\n
+                ${activeCentre.quiz?.questions?.map((q, i) => `${i+1}. Q: ${q.q}\nA: ${q.a}`).join('\n\n') || 'No questions generated.'}
+            `;
+            
+            // Simple text export for mock-up
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${activeCentre.title}-StudyBuddy.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showConfirmation("Export Complete", `Content exported as ${activeCentre.title}-StudyBuddy.txt`);
+        };
+
+        // --- INITIAL SETUP ---
+        document.addEventListener('DOMContentLoaded', () => {
+            initFirebase();
+            // Initial render of timer and UI placeholders
+            resetTimer(true); 
+            // Re-render icons for static elements
+            lucide.createIcons();
+        });
+
+    </script>
+</body>
+</html>
